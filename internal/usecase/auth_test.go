@@ -4,11 +4,33 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/parish/internal/cache"
 	"github.com/parish/internal/domain"
 	"github.com/parish/internal/repository"
 )
+
+func newCacheMock() *cache.CacheMock {
+	store := make(map[string]string)
+	return &cache.CacheMock{
+		SetFunc: func(_ context.Context, key string, value string, _ time.Duration) error {
+			store[key] = value
+			return nil
+		},
+		GetFunc: func(_ context.Context, key string) (string, error) {
+			v, ok := store[key]
+			if !ok {
+				return "", cache.ErrNotFound
+			}
+			return v, nil
+		},
+		DelFunc: func(_ context.Context, key string) error {
+			delete(store, key)
+			return nil
+		},
+	}
+}
 
 // newAuthMocks creates typical mock repos for auth tests.
 func newAuthMocks() (*repository.UserRepositoryMock, *repository.RoleRepositoryMock) {
@@ -76,7 +98,7 @@ func TestAuthRegister(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			userRepo, roleRepo := newAuthMocks()
-			uc := NewAuth(userRepo, roleRepo, cache.NewMemCache())
+			uc := NewAuth(userRepo, roleRepo, newCacheMock())
 			user, err := uc.Register(context.Background(), RegisterInput{
 				Email:     tt.email,
 				Name:      "Test",
@@ -100,7 +122,7 @@ func TestAuthRegister(t *testing.T) {
 
 func TestAuthRegister_DuplicateEmail(t *testing.T) {
 	userRepo, roleRepo := newAuthMocks()
-	uc := NewAuth(userRepo, roleRepo, cache.NewMemCache())
+	uc := NewAuth(userRepo, roleRepo, newCacheMock())
 
 	_, _ = uc.Register(context.Background(), RegisterInput{Email: "test@example.com", Name: "Test", Password: "password123", CreatedBy: "system"})
 	_, err := uc.Register(context.Background(), RegisterInput{Email: "test@example.com", Name: "Test2", Password: "password456", CreatedBy: "system"})
@@ -112,7 +134,7 @@ func TestAuthRegister_DuplicateEmail(t *testing.T) {
 func TestAuthRegister_RepoError(t *testing.T) {
 	userRepo, roleRepo := newAuthMocks()
 	userRepo.CreateFunc = func(_ context.Context, _ *domain.User) error { return errors.New("db") }
-	uc := NewAuth(userRepo, roleRepo, cache.NewMemCache())
+	uc := NewAuth(userRepo, roleRepo, newCacheMock())
 
 	_, err := uc.Register(context.Background(), RegisterInput{Email: "test@example.com", Name: "Test", Password: "password123", CreatedBy: "system"})
 	if !errors.Is(err, domain.ErrInternalServerError) {
@@ -122,7 +144,7 @@ func TestAuthRegister_RepoError(t *testing.T) {
 
 func TestAuthLogin(t *testing.T) {
 	userRepo, roleRepo := newAuthMocks()
-	uc := NewAuth(userRepo, roleRepo, cache.NewMemCache())
+	uc := NewAuth(userRepo, roleRepo, newCacheMock())
 
 	_, _ = uc.Register(context.Background(), RegisterInput{Email: "test@example.com", Name: "Test", Password: "password123", CreatedBy: "system"})
 
@@ -156,7 +178,7 @@ func TestAuthLogin(t *testing.T) {
 
 func TestAuthLogin_InactiveUser(t *testing.T) {
 	userRepo, roleRepo := newAuthMocks()
-	uc := NewAuth(userRepo, roleRepo, cache.NewMemCache())
+	uc := NewAuth(userRepo, roleRepo, newCacheMock())
 
 	user, _ := uc.Register(context.Background(), RegisterInput{Email: "test@example.com", Name: "Test", Password: "password123", CreatedBy: "system"})
 	user.Deactivate("admin")
@@ -170,7 +192,7 @@ func TestAuthLogin_InactiveUser(t *testing.T) {
 
 func TestAuthValidateToken(t *testing.T) {
 	userRepo, roleRepo := newAuthMocks()
-	uc := NewAuth(userRepo, roleRepo, cache.NewMemCache())
+	uc := NewAuth(userRepo, roleRepo, newCacheMock())
 
 	_, _ = uc.Register(context.Background(), RegisterInput{Email: "test@example.com", Name: "Test", Password: "password123", CreatedBy: "system"})
 	_, token, _ := uc.Login(context.Background(), "test@example.com", "password123")
@@ -198,7 +220,7 @@ func TestAuthValidateToken(t *testing.T) {
 
 func TestAuthCheckPermission(t *testing.T) {
 	userRepo, roleRepo := newAuthMocks()
-	uc := NewAuth(userRepo, roleRepo, cache.NewMemCache())
+	uc := NewAuth(userRepo, roleRepo, newCacheMock())
 
 	// Create roles
 	role := domain.NewRole("admin", "Admin", []domain.Permission{
@@ -233,7 +255,7 @@ func TestAuthCheckPermission(t *testing.T) {
 
 func TestAuthGetUserPermissions_MergesRoles(t *testing.T) {
 	userRepo, roleRepo := newAuthMocks()
-	uc := NewAuth(userRepo, roleRepo, cache.NewMemCache())
+	uc := NewAuth(userRepo, roleRepo, newCacheMock())
 
 	role1 := domain.NewRole("reader", "Reader", []domain.Permission{
 		{Resource: "events", Read: true, Write: false},

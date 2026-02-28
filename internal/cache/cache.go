@@ -1,5 +1,7 @@
 package cache
 
+//go:generate moq -out mocks.go . Cache
+
 import (
 	"context"
 	"errors"
