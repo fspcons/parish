@@ -1,0 +1,33 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+*.md
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Build artifacts
+bin/
+dist/
+
+# Test files
+*_test.go
+*.test
+
+# Environment files
+.env
+.env.local
+
+# Logs
+*.log
+
+
+
+
+
