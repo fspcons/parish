@@ -39,7 +39,7 @@ func (ref *ScheduleHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondSuccess(w, http.StatusOK, s, "")
+	RespondSuccess(w, http.StatusOK, s.ToResponse(), "")
 }
 
 // Update updates the schedule
@@ -71,5 +71,5 @@ func (ref *ScheduleHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondSuccess(w, http.StatusOK, s, "Schedule updated successfully")
+	RespondSuccess(w, http.StatusOK, s.ToResponse(), "Schedule updated successfully")
 }

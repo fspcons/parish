@@ -6,12 +6,14 @@ import (
 	"encoding/base64"
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/parish/internal/cache"
 	"github.com/parish/internal/domain"
+	"github.com/parish/internal/email"
 	"github.com/parish/internal/repository"
 )
 
@@ -34,20 +36,27 @@ type Auth interface {
 	GetUserPermissions(ctx context.Context, userID string) ([]domain.Permission, error)
 	CheckPermission(ctx context.Context, userID, resource string, write bool) (bool, error)
 	AssignRoles(ctx context.Context, userID string, roleIDs []string, updatedBy string) error
+	// RequestPasswordReset looks up the user by e-mail; if found, sets a temporary password and sends e-mail.
+	// Callers should always respond with the same success message (no user enumeration).
+	RequestPasswordReset(ctx context.Context, email string) error
+	// ChangePassword lets an authenticated user set a new password and clears MustChangePassword.
+	ChangePassword(ctx context.Context, userID, currentPassword, newPassword string) error
 }
 
 type auth struct {
 	userRepo repository.UserRepository
 	roleRepo repository.RoleRepository
 	cache    cache.Cache
+	mailer   email.Sender
 }
 
 // NewAuth creates a new auth use case
-func NewAuth(userRepo repository.UserRepository, roleRepo repository.RoleRepository, c cache.Cache) Auth {
+func NewAuth(userRepo repository.UserRepository, roleRepo repository.RoleRepository, c cache.Cache, mailer email.Sender) Auth {
 	return &auth{
 		userRepo: userRepo,
 		roleRepo: roleRepo,
 		cache:    c,
+		mailer:   mailer,
 	}
 }
 
@@ -230,6 +239,92 @@ func (ref *auth) AssignRoles(ctx context.Context, userID string, roleIDs []strin
 
 	slog.Info("roles assigned to user", "userID", userID, "roleIDs", roleIDs)
 	return nil
+}
+
+const resetPasswordActor = "system"
+
+// RequestPasswordReset implements a safe password reset flow (same outward behavior whether or not the user exists).
+func (ref *auth) RequestPasswordReset(ctx context.Context, rawEmail string) error {
+	emailAddr := strings.TrimSpace(rawEmail)
+	if emailAddr == "" {
+		return domain.ErrEmailRequired
+	}
+
+	user, err := ref.userRepo.GetByEmail(ctx, emailAddr)
+	if err != nil || user == nil {
+		return nil
+	}
+	if !user.IsActive() {
+		slog.Info("password reset skipped: inactive user", "email", emailAddr)
+		return nil
+	}
+
+	plain, err := randomTempPassword()
+	if err != nil {
+		slog.Error("password reset: failed to generate password", "error", err, "email", emailAddr)
+		return domain.ErrInternalServerError
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(plain), bcrypt.DefaultCost)
+	if err != nil {
+		slog.Error("password reset: failed to hash password", "error", err, "email", emailAddr)
+		return domain.ErrInternalServerError
+	}
+
+	user.ApplyTemporaryPassword(string(hashed), resetPasswordActor)
+	if err := ref.userRepo.Update(ctx, user); err != nil {
+		slog.Error("password reset: failed to persist user", "error", err, "userID", user.ID)
+		return domain.ErrInternalServerError
+	}
+
+	if err := ref.mailer.SendPasswordReset(ctx, user.Email, plain); err != nil {
+		slog.Error("password reset: failed to send email", "error", err, "userID", user.ID)
+		return domain.ErrInternalServerError
+	}
+
+	slog.Info("password reset email sent", "userID", user.ID)
+	return nil
+}
+
+// ChangePassword updates the password for an authenticated user.
+func (ref *auth) ChangePassword(ctx context.Context, userID, currentPassword, newPassword string) error {
+	if newPassword == "" {
+		slog.Error("change password: new password is required")
+		return domain.ErrPasswordRequired
+	}
+
+	user, err := ref.userRepo.Get(ctx, userID)
+	if err != nil {
+		slog.Error("change password: user not found", "error", err, "userID", userID)
+		return domain.ErrNotFound
+	}
+
+	if err := user.CheckPassword(currentPassword); err != nil {
+		slog.Error("change password: invalid current password", "userID", userID)
+		return domain.ErrInvalidCredentials
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		slog.Error("change password: failed to hash", "error", err, "userID", userID)
+		return domain.ErrInternalServerError
+	}
+
+	user.SetPasswordFromUserChange(string(hashed), userID)
+	if err := ref.userRepo.Update(ctx, user); err != nil {
+		slog.Error("change password: failed to persist", "error", err, "userID", userID)
+		return domain.ErrInternalServerError
+	}
+
+	return nil
+}
+
+func randomTempPassword() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
 // generateToken generates a random token and stores it in the cache.

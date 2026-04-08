@@ -8,8 +8,16 @@ import (
 
 	"github.com/parish/internal/cache"
 	"github.com/parish/internal/domain"
+	"github.com/parish/internal/email"
 	"github.com/parish/internal/repository"
 )
+
+// noopMailer satisfies email.Sender for tests that do not assert on e-mail.
+type noopMailer struct{}
+
+func (noopMailer) SendPasswordReset(context.Context, string, string) error { return nil }
+
+var _ email.Sender = noopMailer{}
 
 func newCacheMock() *cache.CacheMock {
 	store := make(map[string]string)
@@ -98,7 +106,7 @@ func TestAuthRegister(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			userRepo, roleRepo := newAuthMocks()
-			uc := NewAuth(userRepo, roleRepo, newCacheMock())
+			uc := NewAuth(userRepo, roleRepo, newCacheMock(), noopMailer{})
 			user, err := uc.Register(context.Background(), RegisterInput{
 				Email:     tt.email,
 				Name:      "Test",
@@ -122,7 +130,7 @@ func TestAuthRegister(t *testing.T) {
 
 func TestAuthRegister_DuplicateEmail(t *testing.T) {
 	userRepo, roleRepo := newAuthMocks()
-	uc := NewAuth(userRepo, roleRepo, newCacheMock())
+	uc := NewAuth(userRepo, roleRepo, newCacheMock(), noopMailer{})
 
 	_, _ = uc.Register(context.Background(), RegisterInput{Email: "test@example.com", Name: "Test", Password: "password123", CreatedBy: "system"})
 	_, err := uc.Register(context.Background(), RegisterInput{Email: "test@example.com", Name: "Test2", Password: "password456", CreatedBy: "system"})
@@ -134,7 +142,7 @@ func TestAuthRegister_DuplicateEmail(t *testing.T) {
 func TestAuthRegister_RepoError(t *testing.T) {
 	userRepo, roleRepo := newAuthMocks()
 	userRepo.CreateFunc = func(_ context.Context, _ *domain.User) error { return errors.New("db") }
-	uc := NewAuth(userRepo, roleRepo, newCacheMock())
+	uc := NewAuth(userRepo, roleRepo, newCacheMock(), noopMailer{})
 
 	_, err := uc.Register(context.Background(), RegisterInput{Email: "test@example.com", Name: "Test", Password: "password123", CreatedBy: "system"})
 	if !errors.Is(err, domain.ErrInternalServerError) {
@@ -144,7 +152,7 @@ func TestAuthRegister_RepoError(t *testing.T) {
 
 func TestAuthLogin(t *testing.T) {
 	userRepo, roleRepo := newAuthMocks()
-	uc := NewAuth(userRepo, roleRepo, newCacheMock())
+	uc := NewAuth(userRepo, roleRepo, newCacheMock(), noopMailer{})
 
 	_, _ = uc.Register(context.Background(), RegisterInput{Email: "test@example.com", Name: "Test", Password: "password123", CreatedBy: "system"})
 
@@ -178,7 +186,7 @@ func TestAuthLogin(t *testing.T) {
 
 func TestAuthLogin_InactiveUser(t *testing.T) {
 	userRepo, roleRepo := newAuthMocks()
-	uc := NewAuth(userRepo, roleRepo, newCacheMock())
+	uc := NewAuth(userRepo, roleRepo, newCacheMock(), noopMailer{})
 
 	user, _ := uc.Register(context.Background(), RegisterInput{Email: "test@example.com", Name: "Test", Password: "password123", CreatedBy: "system"})
 	user.Deactivate("admin")
@@ -192,7 +200,7 @@ func TestAuthLogin_InactiveUser(t *testing.T) {
 
 func TestAuthValidateToken(t *testing.T) {
 	userRepo, roleRepo := newAuthMocks()
-	uc := NewAuth(userRepo, roleRepo, newCacheMock())
+	uc := NewAuth(userRepo, roleRepo, newCacheMock(), noopMailer{})
 
 	_, _ = uc.Register(context.Background(), RegisterInput{Email: "test@example.com", Name: "Test", Password: "password123", CreatedBy: "system"})
 	_, token, _ := uc.Login(context.Background(), "test@example.com", "password123")
@@ -220,7 +228,7 @@ func TestAuthValidateToken(t *testing.T) {
 
 func TestAuthCheckPermission(t *testing.T) {
 	userRepo, roleRepo := newAuthMocks()
-	uc := NewAuth(userRepo, roleRepo, newCacheMock())
+	uc := NewAuth(userRepo, roleRepo, newCacheMock(), noopMailer{})
 
 	// Create roles
 	role := domain.NewRole("admin", "Admin", []domain.Permission{
@@ -255,7 +263,7 @@ func TestAuthCheckPermission(t *testing.T) {
 
 func TestAuthGetUserPermissions_MergesRoles(t *testing.T) {
 	userRepo, roleRepo := newAuthMocks()
-	uc := NewAuth(userRepo, roleRepo, newCacheMock())
+	uc := NewAuth(userRepo, roleRepo, newCacheMock(), noopMailer{})
 
 	role1 := domain.NewRole("reader", "Reader", []domain.Permission{
 		{Resource: "events", Read: true, Write: false},
@@ -277,5 +285,129 @@ func TestAuthGetUserPermissions_MergesRoles(t *testing.T) {
 	}
 	if !permissions[0].Read || !permissions[0].Write {
 		t.Errorf("expected merged read+write, got read=%v write=%v", permissions[0].Read, permissions[0].Write)
+	}
+}
+
+type mailRecorder struct {
+	calls []struct {
+		To    string
+		Plain string
+	}
+}
+
+func (m *mailRecorder) SendPasswordReset(_ context.Context, toEmail, plain string) error {
+	m.calls = append(m.calls, struct {
+		To    string
+		Plain string
+	}{To: toEmail, Plain: plain})
+	return nil
+}
+
+var _ email.Sender = (*mailRecorder)(nil)
+
+func TestRequestPasswordReset_EmptyEmail(t *testing.T) {
+	userRepo, roleRepo := newAuthMocks()
+	m := &mailRecorder{}
+	uc := NewAuth(userRepo, roleRepo, newCacheMock(), m)
+	uc.RequestPasswordReset(context.Background(), "   ")
+	if len(m.calls) != 0 {
+		t.Errorf("expected no email, got %d", len(m.calls))
+	}
+}
+
+func TestRequestPasswordReset_UserNotFound(t *testing.T) {
+	userRepo, roleRepo := newAuthMocks()
+	m := &mailRecorder{}
+	uc := NewAuth(userRepo, roleRepo, newCacheMock(), m)
+	uc.RequestPasswordReset(context.Background(), "nobody@example.com")
+	if len(m.calls) != 0 {
+		t.Errorf("expected no email, got %d", len(m.calls))
+	}
+}
+
+func TestRequestPasswordReset_InactiveUser(t *testing.T) {
+	userRepo, roleRepo := newAuthMocks()
+	uc := NewAuth(userRepo, roleRepo, newCacheMock(), noopMailer{})
+	user, _ := uc.Register(context.Background(), RegisterInput{Email: "test@example.com", Name: "Test", Password: "password123", CreatedBy: "system"})
+	user.Deactivate("admin")
+	_ = userRepo.Update(context.Background(), user)
+
+	m := &mailRecorder{}
+	uc2 := NewAuth(userRepo, roleRepo, newCacheMock(), m)
+	uc2.RequestPasswordReset(context.Background(), "test@example.com")
+	if len(m.calls) != 0 {
+		t.Errorf("expected no email for inactive user, got %d", len(m.calls))
+	}
+}
+
+func TestRequestPasswordReset_Success(t *testing.T) {
+	userRepo, roleRepo := newAuthMocks()
+	m := &mailRecorder{}
+	uc := NewAuth(userRepo, roleRepo, newCacheMock(), m)
+	_, _ = uc.Register(context.Background(), RegisterInput{Email: "test@example.com", Name: "Test", Password: "password123", CreatedBy: "system"})
+
+	uc.RequestPasswordReset(context.Background(), "test@example.com")
+	if len(m.calls) != 1 {
+		t.Fatalf("expected 1 email, got %d", len(m.calls))
+	}
+	if m.calls[0].To != "test@example.com" {
+		t.Errorf("expected email to test@example.com, got %q", m.calls[0].To)
+	}
+	if m.calls[0].Plain == "" {
+		t.Error("expected non-empty temporary password")
+	}
+	if m.calls[0].Plain == "password123" {
+		t.Error("temporary password should not equal old password")
+	}
+
+	u, _, err := uc.Login(context.Background(), "test@example.com", m.calls[0].Plain)
+	if err != nil {
+		t.Fatalf("login with temp password: %v", err)
+	}
+	if !u.MustChangePassword {
+		t.Error("expected MustChangePassword true after reset")
+	}
+}
+
+func TestChangePassword_RequiresNewPassword(t *testing.T) {
+	userRepo, roleRepo := newAuthMocks()
+	uc := NewAuth(userRepo, roleRepo, newCacheMock(), noopMailer{})
+	user, _ := uc.Register(context.Background(), RegisterInput{Email: "test@example.com", Name: "Test", Password: "password123", CreatedBy: "system"})
+
+	err := uc.ChangePassword(context.Background(), user.ID, "password123", "")
+	if !errors.Is(err, domain.ErrPasswordRequired) {
+		t.Errorf("got %v, want ErrPasswordRequired", err)
+	}
+}
+
+func TestChangePassword_WrongCurrentPassword(t *testing.T) {
+	userRepo, roleRepo := newAuthMocks()
+	uc := NewAuth(userRepo, roleRepo, newCacheMock(), noopMailer{})
+	user, _ := uc.Register(context.Background(), RegisterInput{Email: "test@example.com", Name: "Test", Password: "password123", CreatedBy: "system"})
+
+	err := uc.ChangePassword(context.Background(), user.ID, "wrong", "newpass")
+	if !errors.Is(err, domain.ErrInvalidCredentials) {
+		t.Errorf("got %v, want ErrInvalidCredentials", err)
+	}
+}
+
+func TestChangePassword_Success_ClearsMustChangePassword(t *testing.T) {
+	userRepo, roleRepo := newAuthMocks()
+	m := &mailRecorder{}
+	uc := NewAuth(userRepo, roleRepo, newCacheMock(), m)
+	u, _ := uc.Register(context.Background(), RegisterInput{Email: "test@example.com", Name: "Test", Password: "password123", CreatedBy: "system"})
+	uc.RequestPasswordReset(context.Background(), "test@example.com")
+	temp := m.calls[0].Plain
+
+	err := uc.ChangePassword(context.Background(), u.ID, temp, "brandNewPassword123")
+	if err != nil {
+		t.Fatalf("ChangePassword: %v", err)
+	}
+	userAfter, _, err := uc.Login(context.Background(), "test@example.com", "brandNewPassword123")
+	if err != nil {
+		t.Fatalf("login with new password: %v", err)
+	}
+	if userAfter.MustChangePassword {
+		t.Error("expected MustChangePassword false after change")
 	}
 }

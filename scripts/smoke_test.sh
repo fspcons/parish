@@ -11,6 +11,11 @@
 #   make smoke-test
 #   # or directly:
 #   ./scripts/smoke_test.sh [BASE_URL] [EMULATOR_HOST]
+#
+# Optional:
+#   SMOKE_CLEAR_EMULATOR=1  — wipe the Firestore emulator on exit. After a wipe,
+#     restart the API (run-local) so the admin user is seeded again; otherwise the
+#     next smoke run will get 401 on login.
 
 set -euo pipefail
 
@@ -24,14 +29,20 @@ FAIL=0
 
 # shellcheck disable=SC2329
 cleanup() {
-  printf "\n\033[1;34m=== Cleanup ===\033[0m\n"
-  printf "  Resetting Datastore emulator at %s ...\n" "$EMULATOR_HOST"
-  if curl -s -X POST "http://${EMULATOR_HOST}/reset" >/dev/null 2>&1; then
-    printf "  \033[32m✓ Emulator data reset\033[0m\n"
-  else
-    printf "  \033[33m⚠ Could not reset emulator (is it running?)\033[0m\n"
-  fi
   rm -f "$COOKIE_JAR"
+  # Default: do not clear the emulator. Clearing deletes the seeded admin while the
+  # server keeps running, so login fails on the next smoke run until you restart the API.
+  if [[ "${SMOKE_CLEAR_EMULATOR:-}" != "1" && "${SMOKE_CLEAR_EMULATOR:-}" != "true" ]]; then
+    return 0
+  fi
+  local project_id="${GCP_PROJECT_ID:-parish-local}"
+  printf "\n\033[1;34m=== Cleanup ===\033[0m\n"
+  printf "  Clearing Firestore emulator at %s (project %s) ...\n" "$EMULATOR_HOST" "$project_id"
+  if curl -s -X DELETE "http://${EMULATOR_HOST}/emulator/v1/projects/${project_id}/databases/%28default%29/documents" >/dev/null 2>&1; then
+    printf "  \033[32m✓ Emulator data cleared (restart the API before the next smoke run)\033[0m\n"
+  else
+    printf "  \033[33m⚠ Could not clear emulator (is it running?)\033[0m\n"
+  fi
 }
 trap cleanup EXIT
 

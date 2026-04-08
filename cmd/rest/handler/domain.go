@@ -25,7 +25,18 @@ type (
 
 	// LoginResponse represents a login response
 	LoginResponse struct {
-		User any `json:"user"`
+		User domain.UserResponse `json:"user"`
+	}
+
+	// ResetPasswordRequest requests a temporary password by e-mail (response is always the same).
+	ResetPasswordRequest struct {
+		Email string `json:"email"`
+	}
+
+	// ChangePasswordRequest is used by an authenticated user to set a new password.
+	ChangePasswordRequest struct {
+		CurrentPassword string `json:"currentPassword"`
+		NewPassword     string `json:"newPassword"`
 	}
 
 	// EventRequest represents an event request

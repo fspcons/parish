@@ -29,7 +29,7 @@ The API will be available at `http://localhost:8080`. An admin user (`admin@pari
 | `make test` | Run all unit tests |
 | `make clean` | Remove build artifacts |
 | `make mocks` | Regenerate repository mocks via `go generate` |
-| `make infra-start` | Start Datastore emulator + Redis via Docker Compose |
+| `make infra-start` | Start Firestore emulator + Redis via Docker Compose |
 | `make infra-stop` | Tear down local infrastructure |
 | `make run-local` | Start infrastructure, seed admin, and run the API |
 | `make smoke-test` | Execute happy-path bash tests against the running API |
@@ -41,7 +41,7 @@ The API will be available at `http://localhost:8080`. An admin user (`admin@pari
 | `PORT` | `8080` | HTTP listen port |
 | `LOG_LEVEL` | `info` | Log verbosity |
 | `GCP_PROJECT_ID` | — | Google Cloud project (required) |
-| `DATASTORE_EMULATOR_HOST` | — | Set to use the Datastore emulator instead of production |
+| `FIRESTORE_EMULATOR_HOST` | — | Set to `host:port` to use the Firestore emulator (e.g. `localhost:8081` with `make run-local`) |
 | `REDIS_URL` | `localhost:6379` | Redis address for token storage and rate limiting |
 | `COOKIE_SECURE` | `true` | Set to `false` for local HTTP (no TLS) |
 | `CORS_ORIGIN` | `http://localhost:3000` | Allowed origin for CORS credentials |
@@ -65,12 +65,14 @@ cmd/
 internal/
   domain/              Entity definitions, validation, domain errors
   repository/          Repository interfaces + generated mocks (matryer/moq)
-    datastore/         Google Cloud Datastore implementations
+    firestore/         Google Cloud Firestore (native) implementations
   usecase/             Business logic interfaces + implementations
   cache/               Cache interface + Redis implementation
 scripts/
   smoke_test.sh        Bash-based API integration tests
-docker-compose.yml     Local Datastore emulator + Redis
+infra/
+  firestore/           firestore.indexes.json + README for composite indexes (deploy to GCP / Firebase)
+docker-compose.yml     Local Firestore emulator + Redis
 ```
 
 ## Design choices
@@ -81,10 +83,13 @@ The codebase follows Clean Architecture with three distinct layers:
 
 - **Domain** (`internal/domain`) — Pure entities, value objects, validation rules, and domain errors. No external dependencies.
 - **Use cases** (`internal/usecase`) — Business logic defined as interfaces, each method accepting a typed input struct (e.g. `CreateEventInput`) to keep signatures clean and extensible.
-- **Infrastructure** — Repository implementations (`internal/repository/datastore`), cache (`internal/cache`), HTTP handlers (`cmd/rest/handler`), and middleware.
+- **Infrastructure** — Repository implementations (`internal/repository/firestore`), cache (`internal/cache`), HTTP handlers (`cmd/rest/handler`), and middleware.
 
 Dependencies flow inward: handlers depend on use cases, use cases depend on repository and cache interfaces, and the domain depends on nothing.
 
+### API responses (transport layer)
+
+Success payloads do not return raw persistence entities. Each resource has a dedicated response type in [`internal/domain/response.go`](internal/domain/response.go) (e.g. `EventResponse`, `ScheduleResponse`) with only fields needed by clients. Domain types expose `ToResponse()` methods; list endpoints use helpers like `ToEventResponses` so empty results serialize as `[]` instead of `null`. Audit metadata (`createdAt`, `updatedAt`, `createdBy`, `updatedBy`) is omitted from public JSON.
 
 ### Authentication & Authorization
 

@@ -6,9 +6,9 @@ import (
 	"strconv"
 
 	"github.com/parish/cmd/rest/middleware"
+	"github.com/parish/internal/domain"
 	"github.com/parish/internal/usecase"
 )
-
 
 // EventHandler handles event requests
 type EventHandler struct {
@@ -50,7 +50,7 @@ func (ref *EventHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondSuccess(w, http.StatusCreated, evt, "Event created successfully")
+	RespondSuccess(w, http.StatusCreated, evt.ToResponse(), "Event created successfully")
 }
 
 // Get retrieves an event by ID
@@ -67,7 +67,7 @@ func (ref *EventHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondSuccess(w, http.StatusOK, evt, "")
+	RespondSuccess(w, http.StatusOK, evt.ToResponse(), "")
 }
 
 // List retrieves a list of events
@@ -81,7 +81,7 @@ func (ref *EventHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondSuccess(w, http.StatusOK, events, "")
+	RespondSuccess(w, http.StatusOK, domain.ToEventResponses(events), "")
 }
 
 // Update updates an event
@@ -119,7 +119,7 @@ func (ref *EventHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondSuccess(w, http.StatusOK, evt, "Event updated successfully")
+	RespondSuccess(w, http.StatusOK, evt.ToResponse(), "Event updated successfully")
 }
 
 // Delete deletes an event

@@ -11,15 +11,16 @@ import (
 
 // Router configures and returns the HTTP router.
 type Router struct {
-	authHandler        *handler.AuthHandler
-	scheduleHandler    *handler.ScheduleHandler
-	parishGroupHandler *handler.ParishGroupHandler
-	eventHandler       *handler.EventHandler
-	materialHandler    *handler.MaterialHandler
-	roleHandler        *handler.RoleHandler
-	authMiddleware     *middleware.AuthMiddleware
-	rateLimiter        *middleware.RateLimiter
-	corsOrigin         string
+	authHandler            *handler.AuthHandler
+	scheduleHandler        *handler.ScheduleHandler
+	parishGroupHandler     *handler.ParishGroupHandler
+	eventHandler           *handler.EventHandler
+	materialHandler        *handler.MaterialHandler
+	roleHandler            *handler.RoleHandler
+	authMiddleware         *middleware.AuthMiddleware
+	rateLimiter            *middleware.RateLimiter
+	resetPasswordRateLimit *middleware.RateLimiter
+	corsOrigin             string
 }
 
 // NewRouter creates a new Router.
@@ -35,15 +36,16 @@ func NewRouter(
 	corsOrigin string,
 ) *Router {
 	return &Router{
-		authHandler:        authHandler,
-		scheduleHandler:    scheduleHandler,
-		parishGroupHandler: parishGroupHandler,
-		eventHandler:       eventHandler,
-		materialHandler:    materialHandler,
-		roleHandler:        roleHandler,
-		authMiddleware:     authMiddleware,
-		rateLimiter:        middleware.NewRateLimiter(c, 100, time.Minute),
-		corsOrigin:         corsOrigin,
+		authHandler:            authHandler,
+		scheduleHandler:        scheduleHandler,
+		parishGroupHandler:     parishGroupHandler,
+		eventHandler:           eventHandler,
+		materialHandler:        materialHandler,
+		roleHandler:            roleHandler,
+		authMiddleware:         authMiddleware,
+		rateLimiter:            middleware.NewRateLimiter(c, 100, time.Minute),
+		resetPasswordRateLimit: middleware.NewRateLimiterWithPrefix(c, 1, time.Minute, "rl:reset-password:"),
+		corsOrigin:             corsOrigin,
 	}
 }
 
@@ -61,6 +63,8 @@ func (ref *Router) Setup() http.Handler {
 	mux.HandleFunc("POST /api/auth/register", ref.authHandler.Register)
 	mux.HandleFunc("POST /api/auth/login", ref.authHandler.Login)
 	mux.HandleFunc("POST /api/auth/logout", ref.authHandler.Logout)
+	mux.Handle("POST /api/auth/reset-password", ref.resetPasswordRateLimit.Limit(http.HandlerFunc(ref.authHandler.ResetPassword)))
+	mux.Handle("PUT /api/auth/password", ref.authMiddleware.Authenticate(http.HandlerFunc(ref.authHandler.ChangePassword)))
 
 	// Schedule
 	mux.HandleFunc("GET /api/schedule", ref.scheduleHandler.Get)

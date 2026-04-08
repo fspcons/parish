@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/parish/cmd/rest/middleware"
+	"github.com/parish/internal/domain"
 	"github.com/parish/internal/usecase"
 )
 
@@ -47,7 +48,7 @@ func (ref *ParishGroupHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondSuccess(w, http.StatusCreated, group, "Parish group created successfully")
+	RespondSuccess(w, http.StatusCreated, group.ToResponse(), "Parish group created successfully")
 }
 
 // Get retrieves a parish group by ID
@@ -64,7 +65,7 @@ func (ref *ParishGroupHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondSuccess(w, http.StatusOK, group, "")
+	RespondSuccess(w, http.StatusOK, group.ToResponse(), "")
 }
 
 // List retrieves a list of parish groups
@@ -78,7 +79,7 @@ func (ref *ParishGroupHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondSuccess(w, http.StatusOK, groups, "")
+	RespondSuccess(w, http.StatusOK, domain.ToParishGroupResponses(groups), "")
 }
 
 // Update updates a parish group
@@ -114,7 +115,7 @@ func (ref *ParishGroupHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondSuccess(w, http.StatusOK, group, "Parish group updated successfully")
+	RespondSuccess(w, http.StatusOK, group.ToResponse(), "Parish group updated successfully")
 }
 
 // Delete deletes a parish group

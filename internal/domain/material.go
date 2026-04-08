@@ -8,11 +8,11 @@ const (
 // Material represents a parish material (video or document)
 type Material struct {
 	BaseEntity
-	Title       string `json:"title" datastore:"title"`
-	Type        string `json:"type" datastore:"type"` // "videos" or "documents"
-	Description string `json:"description" datastore:"description,noindex"`
-	URL         string `json:"url" datastore:"url,noindex"`
-	Label       string `json:"label" datastore:"label"` // Hierarchical label separated by colons
+	Title       string `json:"title" firestore:"title"`
+	Type        string `json:"type" firestore:"type"` // "videos" or "documents"
+	Description string `json:"description" firestore:"description"`
+	URL         string `json:"url" firestore:"url"`
+	Label       string `json:"label" firestore:"label"` // Hierarchical label separated by colons
 }
 
 // NewMaterial creates a new Material entity. Returns an error if validation fails.
@@ -56,7 +56,12 @@ func (ref *Material) Update(title, materialType, description, url, label, update
 	return nil
 }
 
-// EntityKind returns the Datastore kind for this entity.
-func (ref *Material) EntityKind() string {
+// EntityKind returns the logical entity name (Firestore collection is "materials").
+func (ref Material) EntityKind() string {
 	return "Material"
+}
+
+func (ref Material) SetID(id string) Material {
+	ref.ID = id
+	return ref
 }

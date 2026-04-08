@@ -61,17 +61,28 @@ func SecurityHeaders(next http.Handler) http.Handler {
 
 // RateLimiter implements a sliding-window rate limiter backed by Redis sorted sets.
 type RateLimiter struct {
-	cache  cache.Cache
-	limit  int
-	window time.Duration
+	cache     cache.Cache
+	limit     int
+	window    time.Duration
+	keyPrefix string // Redis key prefix (per IP), e.g. "rl:" vs "rl:reset-password:"
 }
 
-// NewRateLimiter creates a new Redis-backed rate limiter.
+// NewRateLimiter creates a new Redis-backed rate limiter (key prefix "rl:").
 func NewRateLimiter(c cache.Cache, limit int, window time.Duration) *RateLimiter {
+	return NewRateLimiterWithPrefix(c, limit, window, "rl:")
+}
+
+// NewRateLimiterWithPrefix creates a rate limiter that uses keyPrefix+IP as the Redis key.
+// Use a distinct prefix per route so counters do not share the global limiter bucket.
+func NewRateLimiterWithPrefix(c cache.Cache, limit int, window time.Duration, keyPrefix string) *RateLimiter {
+	if keyPrefix == "" {
+		keyPrefix = "rl:"
+	}
 	return &RateLimiter{
-		cache:  c,
-		limit:  limit,
-		window: window,
+		cache:     c,
+		limit:     limit,
+		window:    window,
+		keyPrefix: keyPrefix,
 	}
 }
 
@@ -79,7 +90,7 @@ func NewRateLimiter(c cache.Cache, limit int, window time.Duration) *RateLimiter
 func (ref *RateLimiter) Limit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := getIP(r)
-		key := "rl:" + ip
+		key := ref.keyPrefix + ip
 		now := time.Now()
 		windowStart := fmt.Sprintf("%d", now.Add(-ref.window).UnixNano())
 

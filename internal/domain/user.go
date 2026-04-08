@@ -5,22 +5,24 @@ import "golang.org/x/crypto/bcrypt"
 // User represents a system user
 type User struct {
 	BaseEntity
-	Email    string   `json:"email" datastore:"email"`
-	Name     string   `json:"name" datastore:"name,noindex"`
-	Password string   `json:"-" datastore:"password,noindex"` // Hashed password
-	RoleIDs  []string `json:"roleIds" datastore:"roleIds"`
-	Active   bool     `json:"active" datastore:"active"`
+	Email              string   `json:"email" firestore:"email"`
+	Name               string   `json:"name" firestore:"name"`
+	Password           string   `json:"-" firestore:"password"` // Hashed password
+	RoleIDs            []string `json:"roleIds" firestore:"roleIds"`
+	Active             bool     `json:"active" firestore:"active"`
+	MustChangePassword bool     `json:"mustChangePassword" firestore:"mustChangePassword"`
 }
 
 // NewUser creates a new User entity
 func NewUser(email, name, hashedPassword string, roleIDs []string, createdBy string) *User {
 	return &User{
-		BaseEntity: NewBaseEntity(createdBy),
-		Email:      email,
-		Name:       name,
-		Password:   hashedPassword,
-		RoleIDs:    roleIDs,
-		Active:     true,
+		BaseEntity:         NewBaseEntity(createdBy),
+		Email:              email,
+		Name:               name,
+		Password:           hashedPassword,
+		RoleIDs:            roleIDs,
+		Active:             true,
+		MustChangePassword: false,
 	}
 }
 
@@ -57,7 +59,26 @@ func (ref *User) Deactivate(updatedBy string) {
 	ref.UpdateTimestamp(updatedBy)
 }
 
-// EntityKind returns the Datastore kind for this entity.
-func (ref *User) EntityKind() string {
+// ApplyTemporaryPassword sets a new bcrypt-hashed password and marks the account so the client must change password after login.
+func (ref *User) ApplyTemporaryPassword(hashedPassword string, updatedBy string) {
+	ref.Password = hashedPassword
+	ref.MustChangePassword = true
+	ref.UpdateTimestamp(updatedBy)
+}
+
+// SetPasswordFromUserChange replaces the password after the user submits a new one and clears the forced-change flag.
+func (ref *User) SetPasswordFromUserChange(hashedPassword string, updatedBy string) {
+	ref.Password = hashedPassword
+	ref.MustChangePassword = false
+	ref.UpdateTimestamp(updatedBy)
+}
+
+// EntityKind returns the logical entity name (Firestore collection is "users").
+func (ref User) EntityKind() string {
 	return "User"
+}
+
+func (ref User) SetID(id string) User {
+	ref.ID = id
+	return ref
 }

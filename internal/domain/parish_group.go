@@ -3,10 +3,10 @@ package domain
 // ParishGroup represents a parish group
 type ParishGroup struct {
 	BaseEntity
-	Title       string `json:"title" datastore:"title"`
-	Description string `json:"description" datastore:"description,noindex"`
-	Manager     string `json:"manager" datastore:"manager"`
-	Active      bool   `json:"active" datastore:"active"`
+	Title       string `json:"title" firestore:"title"`
+	Description string `json:"description" firestore:"description"`
+	Manager     string `json:"manager" firestore:"manager"`
+	Active      bool   `json:"active" firestore:"active"`
 }
 
 // NewParishGroup creates a new ParishGroup entity. Returns an error if validation fails.
@@ -57,7 +57,12 @@ func (ref *ParishGroup) Deactivate(updatedBy string) {
 	ref.UpdateTimestamp(updatedBy)
 }
 
-// EntityKind returns the Datastore kind for this entity.
-func (ref *ParishGroup) EntityKind() string {
+// EntityKind returns the logical entity name (Firestore collection is "parish_groups").
+func (ref ParishGroup) EntityKind() string {
 	return "ParishGroup"
+}
+
+func (ref ParishGroup) SetID(id string) ParishGroup {
+	ref.ID = id
+	return ref
 }

@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/parish/cmd/rest/middleware"
+	"github.com/parish/internal/domain"
 	"github.com/parish/internal/usecase"
 )
 
@@ -48,7 +49,7 @@ func (ref *MaterialHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondSuccess(w, http.StatusCreated, mat, "Material created successfully")
+	RespondSuccess(w, http.StatusCreated, mat.ToResponse(), "Material created successfully")
 }
 
 // Get retrieves a material by ID
@@ -65,7 +66,7 @@ func (ref *MaterialHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondSuccess(w, http.StatusOK, mat, "")
+	RespondSuccess(w, http.StatusOK, mat.ToResponse(), "")
 }
 
 // List retrieves a list of materials
@@ -75,7 +76,7 @@ func (ref *MaterialHandler) List(w http.ResponseWriter, r *http.Request) {
 	materialType := r.URL.Query().Get("type")
 	label := r.URL.Query().Get("label")
 
-	var materials any
+	var materials []*domain.Material
 	var err error
 
 	if materialType != "" {
@@ -91,7 +92,7 @@ func (ref *MaterialHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondSuccess(w, http.StatusOK, materials, "")
+	RespondSuccess(w, http.StatusOK, domain.ToMaterialResponses(materials), "")
 }
 
 // Update updates a material
@@ -128,7 +129,7 @@ func (ref *MaterialHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondSuccess(w, http.StatusOK, mat, "Material updated successfully")
+	RespondSuccess(w, http.StatusOK, mat.ToResponse(), "Material updated successfully")
 }
 
 // Delete deletes a material

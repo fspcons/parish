@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/parish/cmd/rest/middleware"
+	"github.com/parish/internal/domain"
 	"github.com/parish/internal/usecase"
 )
 
@@ -48,7 +49,7 @@ func (ref *RoleHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondSuccess(w, http.StatusCreated, role, "Role created successfully")
+	RespondSuccess(w, http.StatusCreated, role.ToResponse(), "Role created successfully")
 }
 
 // Get retrieves a role by ID
@@ -65,7 +66,7 @@ func (ref *RoleHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondSuccess(w, http.StatusOK, role, "")
+	RespondSuccess(w, http.StatusOK, role.ToResponse(), "")
 }
 
 // List retrieves a list of roles
@@ -79,7 +80,7 @@ func (ref *RoleHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondSuccess(w, http.StatusOK, roles, "")
+	RespondSuccess(w, http.StatusOK, domain.ToRoleResponses(roles), "")
 }
 
 // Update updates a role
@@ -114,7 +115,7 @@ func (ref *RoleHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondSuccess(w, http.StatusOK, role, "Role updated successfully")
+	RespondSuccess(w, http.StatusOK, role.ToResponse(), "Role updated successfully")
 }
 
 // Delete deletes a role

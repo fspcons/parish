@@ -24,6 +24,9 @@ func TestNewUser(t *testing.T) {
 	if !u.Active {
 		t.Error("expected new user to be active")
 	}
+	if u.MustChangePassword {
+		t.Error("expected MustChangePassword false for new user")
+	}
 	if u.ID == "" {
 		t.Error("expected ID to be set")
 	}
@@ -123,5 +126,36 @@ func TestUserEntityKind(t *testing.T) {
 	u := &User{}
 	if kind := u.EntityKind(); kind != "User" {
 		t.Errorf("expected 'User', got %q", kind)
+	}
+}
+
+func TestUserApplyTemporaryPassword(t *testing.T) {
+	u := NewUser("a@b.com", "A", testHashPassword(t, "old"), nil, "creator")
+	newHash := testHashPassword(t, "temp")
+	u.ApplyTemporaryPassword(newHash, "system")
+	if u.Password != newHash {
+		t.Error("expected password updated to new hash")
+	}
+	if !u.MustChangePassword {
+		t.Error("expected MustChangePassword true after temporary password")
+	}
+	if u.UpdatedBy != "system" {
+		t.Errorf("expected updatedBy 'system', got %q", u.UpdatedBy)
+	}
+}
+
+func TestUserSetPasswordFromUserChange(t *testing.T) {
+	u := NewUser("a@b.com", "A", testHashPassword(t, "old"), nil, "creator")
+	u.MustChangePassword = true
+	newHash := testHashPassword(t, "newsecret")
+	u.SetPasswordFromUserChange(newHash, "user-1")
+	if u.Password != newHash {
+		t.Error("expected password updated")
+	}
+	if u.MustChangePassword {
+		t.Error("expected MustChangePassword false after user change")
+	}
+	if u.UpdatedBy != "user-1" {
+		t.Errorf("expected updatedBy 'user-1', got %q", u.UpdatedBy)
 	}
 }

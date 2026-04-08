@@ -3,12 +3,12 @@ package domain
 // Event represents a parish event
 type Event struct {
 	BaseEntity
-	Title       string `json:"title" datastore:"title"`
-	Description string `json:"description" datastore:"description,noindex"`
-	ImgURL      string `json:"imgUrl" datastore:"imgUrl,noindex"`
-	Date        string `json:"date" datastore:"date"`
-	Location    string `json:"location" datastore:"location"`
-	Origin      string `json:"origin" datastore:"origin"`
+	Title       string `json:"title" firestore:"title"`
+	Description string `json:"description" firestore:"description"`
+	ImgURL      string `json:"imgUrl" firestore:"imgUrl"`
+	Date        string `json:"date" firestore:"date"`
+	Location    string `json:"location" firestore:"location"`
+	Origin      string `json:"origin" firestore:"origin"`
 }
 
 // NewEvent creates a new Event entity. Returns an error if validation fails.
@@ -51,7 +51,12 @@ func (ref *Event) Update(title, description, imgURL, date, location, origin, upd
 	return nil
 }
 
-// EntityKind returns the Datastore kind for this entity.
-func (ref *Event) EntityKind() string {
+// EntityKind returns the logical entity name (Firestore collection is "events").
+func (ref Event) EntityKind() string {
 	return "Event"
+}
+
+func (ref Event) SetID(id string) Event {
+	ref.ID = id
+	return ref
 }

@@ -3,13 +3,13 @@ package domain
 // Schedule represents the parish schedule (single row entity)
 type Schedule struct {
 	BaseEntity
-	Monday    string `json:"monday" datastore:"monday,noindex"`
-	Tuesday   string `json:"tuesday" datastore:"tuesday,noindex"`
-	Wednesday string `json:"wednesday" datastore:"wednesday,noindex"`
-	Thursday  string `json:"thursday" datastore:"thursday,noindex"`
-	Friday    string `json:"friday" datastore:"friday,noindex"`
-	Saturday  string `json:"saturday" datastore:"saturday,noindex"`
-	Sunday    string `json:"sunday" datastore:"sunday,noindex"`
+	Monday    string `json:"monday" firestore:"monday"`
+	Tuesday   string `json:"tuesday" firestore:"tuesday"`
+	Wednesday string `json:"wednesday" firestore:"wednesday"`
+	Thursday  string `json:"thursday" firestore:"thursday"`
+	Friday    string `json:"friday" firestore:"friday"`
+	Saturday  string `json:"saturday" firestore:"saturday"`
+	Sunday    string `json:"sunday" firestore:"sunday"`
 }
 
 // NewSchedule creates a new Schedule entity
@@ -31,7 +31,12 @@ func (ref *Schedule) UpdateDays(monday, tuesday, wednesday, thursday, friday, sa
 	ref.UpdateTimestamp(updatedBy)
 }
 
-// EntityKind returns the Datastore kind for this entity.
-func (ref *Schedule) EntityKind() string {
+// EntityKind returns the logical entity name (Firestore collection is "schedules").
+func (ref Schedule) EntityKind() string {
 	return "Schedule"
+}
+
+func (ref Schedule) SetID(id string) Schedule {
+	ref.ID = id
+	return ref
 }
